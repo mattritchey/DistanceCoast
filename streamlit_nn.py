@@ -92,7 +92,7 @@ elif address_file=='Addresses':
     cols=df.columns.to_list()[:4]
     df['address']=df[cols[0]]+' %2C '+df[cols[1]]+' %2C '+df[cols[2]]+' '+df[cols[3]].str[:5]
     df['address']=df['address'].str.replace(' ','+')
-    results_lat_lon=Parallel(n_jobs=4, prefer="threads")(delayed(census_geocode_single_address)(i) for i in df['address'].values)
+    results_lat_lon=Parallel(n_jobs=2, prefer="threads")(delayed(census_geocode_single_address)(i) for i in df['address'].values)
     results_lat_lon=pd.concat(results_lat_lon).reset_index(drop=1)
     df2=results_lat_lon.join(df)
     df3=df2[['Lat','Lon']+cols]
