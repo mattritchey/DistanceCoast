@@ -13,11 +13,8 @@ from geopy.geocoders import Nominatim
 from geopy.extra.rate_limiter import RateLimiter
 from scipy import spatial
 from vincenty import vincenty
-
-@st.cache
-def convert_df(df):
-    # IMPORTANT: Cache the conversion to prevent computation on every rerun
-    return df.to_csv(index=0).encode('utf-8')
+import numpy as np
+from joblib import Parallel, delayed
 
 @st.cache
 def alt_vertices():
@@ -26,6 +23,12 @@ def alt_vertices():
 @st.cache
 def gulf_vertices():
     return pd.read_parquet('https://github.com/mattritchey/DistanceCoast/raw/main/Gulf%20Shore%20Vertices2.parquet')
+
+@st.cache
+def convert_df(df):
+    # IMPORTANT: Cache the conversion to prevent computation on every rerun
+    return df.to_csv(index=0).encode('utf-8')
+
 
 
 def distance(x):
@@ -56,18 +59,46 @@ def distance_coast(df):
                                                                               "Lat_attached":"Lat_gulf","Lon_attached":"Lon_gulf" })	
     df_gulf=df_gulf.drop(columns=['Lat_input','Lon_input'])                                                                   
     final=pd.concat([df_atl,df_gulf],axis=1)
+    final = final.loc[:,~final.columns.duplicated()]
     return final
+
+def census_geocode_single_address(address):
+    df=pd.read_json(f'https://geocoding.geo.census.gov/geocoder/locations/onelineaddress?address={address}&benchmark=2020&format=json')
+    try:
+        results=df.iloc[:1,0][0][0]['coordinates']
+        x,y=results['x'],results['y']
+    except:
+        x,y=np.nan,np.nan
+    return pd.DataFrame({'Lat':y,'Lon':x},index=[0])
 
 st.set_page_config(layout="wide")
 col1, col2 = st.columns((2))
 
-address_file = st.sidebar.radio('Address or File:', ('Address', 'File'))
-address = st.sidebar.text_input(
-    "Address", "123 Main Street, Loveland, OH 43215")
-uploaded_file = st.sidebar.file_uploader("Choose a file")
 
-if address_file=='File':
+address_file = st.sidebar.radio('Choose', ('Single Address', 'Addresses','Lat Lons'))
+address = st.sidebar.text_input(
+    "Address", "123 Main Street, Columbus, OH 43215")
+uploaded_file = st.sidebar.file_uploader("Choose a file")
+# uploaded_file='C:/Users/mritchey/addresses_sample.csv'
+# address_file='Addresses'
+if address_file=='LatLons':
+    try:
+        df=pd.read_csv(uploaded_file)[['Lat','Lon']]
+    except:
+        print('Make Sure there is a Lat and Lon Field')
+        
+
+elif address_file=='Addresses':
     df=pd.read_csv(uploaded_file)
+    cols=df.columns.to_list()[:4]
+    df['address']=df[cols[0]]+' %2C '+df[cols[1]]+' %2C '+df[cols[2]]+' '+df[cols[3]].str[:5]
+    df['address']=df['address'].str.replace(' ','+')
+    results_lat_lon=Parallel(n_jobs=-1, prefer="threads")(delayed(census_geocode_single_address)(i) for i in df['address'].values)
+    results_lat_lon=pd.concat(results_lat_lon).reset_index(drop=1)
+    df2=results_lat_lon.join(df)
+    df3=df2[['Lat','Lon']+cols]
+    df=df3.query("Lat==Lat")
+    errors=df3.query("Lat!=Lat")[cols].reset_index(drop=1)
     
 else:
     geolocator = Nominatim(user_agent="GTA Lookup")
@@ -76,25 +107,29 @@ else:
     lat, lon = location.latitude, location.longitude
     df=pd.DataFrame({'Lat':lat,'Lon':lon},index=[0])
 
-results=distance_coast(df)[['Lat_input','Lon_input','Distance to Gulf','Distance to Atlantic']]
+results=distance_coast(df)
 
-lat_lons=results.values
+if address_file=='Addresses':
+    results=results[cols+['Lat_input','Lon_input','Distance to Gulf','Distance to Atlantic']]
+else:
+    results=results[['Lat_input','Lon_input','Distance to Gulf','Distance to Atlantic']]
 
-m = folium.Map(location=[lat_lons[0][0], lat_lons[0][1]],  zoom_start=4)
 
-for coord in lat_lons:
-    gulf_dis,alt_dis=coord[2], coord[3]
-    folium.Marker( location=[ coord[0], coord[1] ], 
+m = folium.Map(location=[39.50, -98.35],  zoom_start=3)
+for index, row in results.iterrows():
+    gulf_dis, alt_dis=results.loc[index,'Distance to Gulf'], results.loc[index,'Distance to Atlantic']
+    folium.Marker( location=[ results.loc[index,'Lat_input'], results.loc[index,'Lon_input'] ], 
                   fill_color='#43d9de', 
                   popup=f"""Gulf: {gulf_dis}; Altantic: {alt_dis} miles""",
 
-                  radius=8 ).add_to( m )
+                  radius=8 ).add_to(m)
 with col1:
     st.title('Distance to Coast')
     st_folium(m, height=500,width=500)
 
 with col2:
     st.title('Results')
+    results.index = np.arange(1, len(results) + 1)
     st.dataframe(results)
     csv = convert_df(results)
     st.download_button(
@@ -102,4 +137,24 @@ with col2:
         data=csv,
         file_name='Results.csv',
         mime='text/csv')
+    try:
+        if errors.shape[0]>0:
+        
+            st.header('Errors')
+            errors.index = np.arange(1, len(errors) + 1)
+            st.dataframe(errors)
+            # st.table(errors.assign(hack='').set_index('hack'))
+            csv2 = convert_df(errors)
+            st.download_button(
+                label="Download Errors as CSV",
+                data=csv2,
+                file_name='Errors.csv',
+                mime='text/csv')
 
+    except:
+        pass
+
+st.markdown(""" <style>
+#MainMenu {visibility: hidden;}
+footer {visibility: hidden;}
+</style> """, unsafe_allow_html=True)
