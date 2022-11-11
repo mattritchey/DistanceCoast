@@ -30,6 +30,7 @@ def convert_df(df):
     return df.to_csv(index=0).encode('utf-8')
 
 
+
 def distance(x):
     left_coords = (x[0], x[1])
     right_coords = (x[2], x[3])
@@ -62,8 +63,8 @@ def distance_coast(df):
     return final
 
 def census_geocode_single_address(address):
-    df=pd.read_json(f'https://geocoding.geo.census.gov/geocoder/locations/onelineaddress?address={address}&benchmark=2020&format=json')
     try:
+        df=pd.read_json(f'https://geocoding.geo.census.gov/geocoder/locations/onelineaddress?address={address}&benchmark=2020&format=json')
         results=df.iloc[:1,0][0][0]['coordinates']
         x,y=results['x'],results['y']
     except:
@@ -80,19 +81,19 @@ address = st.sidebar.text_input(
 uploaded_file = st.sidebar.file_uploader("Choose a file")
 # uploaded_file='C:/Users/mritchey/addresses_sample.csv'
 # address_file='Addresses'
-if address_file=='LatLons':
+
+if address_file=='Lat Lons':
     try:
         df=pd.read_csv(uploaded_file)[['Lat','Lon']]
     except:
         print('Make Sure there is a Lat and Lon Field')
         
-
 elif address_file=='Addresses':
     df=pd.read_csv(uploaded_file)
     cols=df.columns.to_list()[:4]
     df['address']=df[cols[0]]+' %2C '+df[cols[1]]+' %2C '+df[cols[2]]+' '+df[cols[3]].str[:5]
     df['address']=df['address'].str.replace(' ','+')
-    results_lat_lon=Parallel(n_jobs=2, prefer="threads")(delayed(census_geocode_single_address)(i) for i in df['address'].values)
+    results_lat_lon=Parallel(n_jobs=6, prefer="threads")(delayed(census_geocode_single_address)(i) for i in df['address'].values)
     results_lat_lon=pd.concat(results_lat_lon).reset_index(drop=1)
     df2=results_lat_lon.join(df)
     df3=df2[['Lat','Lon']+cols]
@@ -105,6 +106,8 @@ else:
     location = geolocator.geocode(address)
     lat, lon = location.latitude, location.longitude
     df=pd.DataFrame({'Lat':lat,'Lon':lon},index=[0])
+
+
 
 results=distance_coast(df)
 
