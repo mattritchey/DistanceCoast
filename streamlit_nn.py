@@ -75,12 +75,15 @@ st.set_page_config(layout="wide")
 col1, col2 = st.columns((2))
 
 
-address_file = st.sidebar.radio('Choose', ('Single Address', 'Addresses','Lat Lons'))
+
 address = st.sidebar.text_input(
     "Address", "123 Main Street, Columbus, OH 43215")
 uploaded_file = st.sidebar.file_uploader("Choose a file")
-# uploaded_file='C:/Users/mritchey/addresses_sample.csv'
-# address_file='Addresses'
+address_file = st.sidebar.radio('Choose', ('Single Address', 'Addresses','Lat Lons'))
+
+# with st.form("key1"):
+#     # ask for input
+#     button_check = st.form_submit_button("Button to Click")
 
 if address_file=='Lat Lons':
     try:
@@ -89,12 +92,14 @@ if address_file=='Lat Lons':
         print('Make Sure there is a Lat and Lon Field')
         
 elif address_file=='Addresses':
+    
     df=pd.read_csv(uploaded_file)
     cols=df.columns.to_list()[:4]
     df['address']=df[cols[0]]+' %2C '+df[cols[1]]+' %2C '+df[cols[2]]+' '+df[cols[3]].str[:5]
     df['address']=df['address'].str.replace(' ','+')
-    results_lat_lon=Parallel(n_jobs=6, prefer="threads")(delayed(census_geocode_single_address)(i) for i in df['address'].values)
-    results_lat_lon=pd.concat(results_lat_lon).reset_index(drop=1)
+    with st.spinner("Geocoding: Hang On..."):
+        results_lat_lon=Parallel(n_jobs=6, prefer="threads")(delayed(census_geocode_single_address)(i) for i in df['address'].values)
+        results_lat_lon=pd.concat(results_lat_lon).reset_index(drop=1)
     df2=results_lat_lon.join(df)
     df3=df2[['Lat','Lon']+cols]
     df=df3.query("Lat==Lat")
@@ -106,9 +111,7 @@ else:
     location = geolocator.geocode(address)
     lat, lon = location.latitude, location.longitude
     df=pd.DataFrame({'Lat':lat,'Lon':lon},index=[0])
-
-
-
+ 
 results=distance_coast(df)
 
 if address_file=='Addresses':
@@ -152,7 +155,6 @@ with col2:
                 data=csv2,
                 file_name='Errors.csv',
                 mime='text/csv')
-
     except:
         pass
 
