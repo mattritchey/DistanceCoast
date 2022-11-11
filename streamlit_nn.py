@@ -85,13 +85,13 @@ address_file = st.sidebar.radio('Choose', ('Single Address', 'Addresses','Lat Lo
 #     # ask for input
 #     button_check = st.form_submit_button("Button to Click")
 
-if address_file=='Lat Lons':
+if address_file=='Lat Lons' and not None:
     try:
         df=pd.read_csv(uploaded_file)[['Lat','Lon']]
     except:
-        print('Make Sure there is a Lat and Lon Field')
+        'Make Sure there is a Lat and Lon Field'
         
-elif address_file=='Addresses':
+elif address_file=='Addresses' and not None:
     
     df=pd.read_csv(uploaded_file)
     cols=df.columns.to_list()[:4]
